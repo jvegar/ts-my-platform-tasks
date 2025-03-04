@@ -1,0 +1,10 @@
+{
+  "bindings": [
+    {
+      "type": "timerTrigger",
+      "name": "GitHubRepoTrigger",
+      "direction": "in",
+      "schedule": "0 */5 * * * *"
+    }
+  ]
+}
