@@ -37,7 +37,7 @@ function getRateLimitInfo(headers: any): RateLimitInfo {
   };
 }
 
-async function makeGitHubRequest(url: string, params = {}) {
+async function makeGitHubRequest(url: string, context: InvocationContext, params = {}) {
   const cacheKey = `${url}${JSON.stringify(params)}`;
   const cached = cache.get(cacheKey);
   
@@ -59,10 +59,10 @@ async function makeGitHubRequest(url: string, params = {}) {
       });
 
       const rateLimit = getRateLimitInfo(response.headers);
-      console.log(`Rate limit - Remaining: ${rateLimit.remaining}/${rateLimit.limit}`);
+      context.log(`Rate limit - Remaining: ${rateLimit.remaining}/${rateLimit.limit}`);
 
       if (rateLimit.remaining < 100) {
-        console.warn(`Warning: GitHub API rate limit is running low. ${rateLimit.remaining} requests remaining.`);
+        context.warn(`Warning: GitHub API rate limit is running low. ${rateLimit.remaining} requests remaining.`);
       }
 
       // Cache the successful response
@@ -82,8 +82,8 @@ async function makeGitHubRequest(url: string, params = {}) {
       }
 
       if (retryCount < maxRetries - 1) {
-        const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff
-        console.log(`Retrying after ${delay}ms...`);
+        const delay = Math.pow(2, retryCount) * 1000;
+        context.log(`Retrying after ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         retryCount++;
         continue;
@@ -97,22 +97,22 @@ async function makeGitHubRequest(url: string, params = {}) {
 }
 
 // Function to fetch topics for a specific repository
-async function fetchRepoTopics(fullName: string): Promise<string[]> {
+async function fetchRepoTopics(fullName: string, context: InvocationContext): Promise<string[]> {
   try {
     const url = `https://api.github.com/repos/${fullName}/topics`;
-    const data = await makeGitHubRequest(url);
+    const data = await makeGitHubRequest(url, context);
     return data.names;
   } catch (error) {
-    console.error(`Error fetching topics for repository ${fullName}:`, error);
+    context.error(`Error fetching topics for repository ${fullName}:`, error);
     return [];
   }
 }
 
 // Function to fetch public repositories for a given GitHub username
-async function fetchPublicRepos(username: string): Promise<GitHubRepo[]> {
+async function fetchPublicRepos(username: string, context: InvocationContext): Promise<GitHubRepo[]> {
   try {
     const url = `https://api.github.com/users/${username}/repos`;
-    const data = await makeGitHubRequest(url, { type: "public" });
+    const data = await makeGitHubRequest(url, context, { type: "public" });
 
     // Process repositories in batches to avoid overwhelming the API
     const BATCH_SIZE = 5;
@@ -122,7 +122,7 @@ async function fetchPublicRepos(username: string): Promise<GitHubRepo[]> {
       const batch = data.slice(i, i + BATCH_SIZE);
       const batchResults = await Promise.all(
         batch.map(async (repo: GitHubRepo) => {
-          const topics = await fetchRepoTopics(repo.full_name);
+          const topics = await fetchRepoTopics(repo.full_name, context);
           return { ...repo, topics };
         })
       );
@@ -131,7 +131,7 @@ async function fetchPublicRepos(username: string): Promise<GitHubRepo[]> {
 
     return results;
   } catch (error) {
-    console.error("Error fetching repositories:", error);
+    context.error("Error fetching repositories:", error);
     throw error;
   }
 }
@@ -143,17 +143,17 @@ export async function GitHubRepoTrigger(
   context.log("Timer function processed request.");
   const username = "jvegar";
   try {
-    const repos = await fetchPublicRepos(username);
-    console.log(`Public repositories for ${username}:`);
+    const repos = await fetchPublicRepos(username, context);
+    context.log(`Public repositories for ${username}:`);
     repos.forEach((repo) => {
-      console.log(
+      context.log(
         `- ${repo.name}: ${repo.description || "No description"} | ${
           repo.full_name
         } | ${repo.language} | ${repo.topics}`
       );
     });
   } catch (error) {
-    console.error("Failed to fetch repositories:", error);
+    context.error("Failed to fetch repositories:", error);
   }
 }
 
