@@ -5,6 +5,7 @@ dotenv.config();
 
 // Validate GitHub token at startup
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5070';
 if (!GITHUB_TOKEN) {
   throw new Error('GITHUB_TOKEN environment variable is not set. Please set it in your .env file or application settings.');
 }
@@ -136,24 +137,70 @@ async function fetchPublicRepos(username: string, context: InvocationContext): P
   }
 }
 
+interface GitHubRepoAPI {
+  id: number;
+  name: string;
+  fullName: string;
+  htmlUrl: string;
+  description: string;
+  language: string;
+  topics: string[];
+}
+
 export async function GitHubRepoTrigger(
   myTimer: Timer,
   context: InvocationContext
 ): Promise<void> {
   context.log("Timer function processed request.");
   const username = "jvegar";
+  
   try {
-    const repos = await fetchPublicRepos(username, context);
-    context.log(`Public repositories for ${username}:`);
-    repos.forEach((repo) => {
-      context.log(
-        `- ${repo.name}: ${repo.description || "No description"} | ${
-          repo.full_name
-        } | ${repo.language} | ${repo.topics}`
+    // Fetch existing repos from API
+    const existingRepos = await axios.get<GitHubRepoAPI[]>(`${API_BASE_URL}/api/github-repos`);
+    const existingRepoMap = new Map(existingRepos.data.map(repo => [repo.fullName, repo]));
+    
+    // Fetch GitHub repos
+    const githubRepos = await fetchPublicRepos(username, context);
+    
+    // Process repos in batches to avoid overwhelming the API
+    const BATCH_SIZE = 5;
+    const newRepos: GitHubRepo[] = [];
+    
+    for (const repo of githubRepos) {
+      if (!existingRepoMap.has(repo.full_name)) {
+        newRepos.push(repo);
+      }
+    }
+    
+    // Add new repos in batches
+    for (let i = 0; i < newRepos.length; i += BATCH_SIZE) {
+      const batch = newRepos.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (repo) => {
+          const apiRepo: GitHubRepoAPI = {
+            id: repo.id,
+            name: repo.name,
+            fullName: repo.full_name,
+            htmlUrl: repo.html_url,
+            description: repo.description || '',
+            language: repo.language || '',
+            topics: repo.topics
+          };
+          
+          try {
+            await axios.post(`${API_BASE_URL}/api/github-repos`, apiRepo);
+            context.log(`Added new repo: ${repo.full_name}`);
+          } catch (error) {
+            context.error(`Failed to add repo ${repo.full_name}:`, error);
+          }
+        })
       );
-    });
+    }
+    
+    context.log(`Processed ${githubRepos.length} repositories. Added ${newRepos.length} new repos.`);
+    
   } catch (error) {
-    context.error("Failed to fetch repositories:", error);
+    context.error("Failed to process repositories:", error);
   }
 }
 
