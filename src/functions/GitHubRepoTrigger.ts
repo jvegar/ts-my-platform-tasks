@@ -18,6 +18,7 @@ interface GitHubRepo {
   description: string | null;
   language: string | null;
   topics: string[];
+  readme: string;
 }
 
 interface RateLimitInfo {
@@ -98,6 +99,18 @@ async function makeGitHubRequest(url: string, context: InvocationContext, params
 }
 
 // Function to fetch topics for a specific repository
+async function fetchReadme(fullName: string, context: InvocationContext): Promise<string> {
+  try {
+    const url = `https://api.github.com/repos/${fullName}/readme`;
+    const data = await makeGitHubRequest(url, context);
+    const content = Buffer.from(data.content, 'base64').toString('utf-8');
+    return content;
+  } catch (error) {
+    context.warn(`No README found for repository ${fullName}, using default`);
+    return '# Hello, *World*!';
+  }
+}
+
 async function fetchRepoTopics(fullName: string, context: InvocationContext): Promise<string[]> {
   try {
     const url = `https://api.github.com/repos/${fullName}/topics`;
@@ -124,7 +137,8 @@ async function fetchPublicRepos(username: string, context: InvocationContext): P
       const batchResults = await Promise.all(
         batch.map(async (repo: GitHubRepo) => {
           const topics = await fetchRepoTopics(repo.full_name, context);
-          return { ...repo, topics };
+          const readme = await fetchReadme(repo.full_name, context);
+          return { ...repo, topics, readme };
         })
       );
       results.push(...batchResults);
@@ -145,6 +159,7 @@ interface GitHubRepoAPI {
   description: string;
   language: string;
   topics: string[];
+  readme: string;
 }
 
 export async function GitHubRepoTrigger(
@@ -184,7 +199,8 @@ export async function GitHubRepoTrigger(
             htmlUrl: repo.html_url,
             description: repo.description || '',
             language: repo.language || '',
-            topics: repo.topics
+            topics: repo.topics,
+            readme: repo.readme
           };
           
           try {
