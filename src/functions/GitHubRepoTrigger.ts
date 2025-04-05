@@ -180,10 +180,14 @@ export async function GitHubRepoTrigger(
     // Process repos in batches to avoid overwhelming the API
     const BATCH_SIZE = 5;
     const newRepos: GitHubRepo[] = [];
+    const updateRepos: { repo: GitHubRepo; id: number }[] = [];
     
     for (const repo of githubRepos) {
-      if (!existingRepoMap.has(repo.full_name)) {
+      const existingRepo = existingRepoMap.get(repo.full_name);
+      if (!existingRepo) {
         newRepos.push(repo);
+      } else {
+        updateRepos.push({ repo, id: existingRepo.id });
       }
     }
     
@@ -212,8 +216,34 @@ export async function GitHubRepoTrigger(
         })
       );
     }
+
+    // Update existing repos in batches
+    for (let i = 0; i < updateRepos.length; i += BATCH_SIZE) {
+      const batch = updateRepos.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async ({ repo, id }) => {
+          const apiRepo: GitHubRepoAPI = {
+            id: repo.id,
+            name: repo.name,
+            fullName: repo.full_name,
+            htmlUrl: repo.html_url,
+            description: repo.description || '',
+            language: repo.language || '',
+            topics: repo.topics,
+            readme: repo.readme
+          };
+          
+          try {
+            await axios.put(`${API_BASE_URL}/api/github-repos/${id}`, apiRepo);
+            context.log(`Updated repo: ${repo.full_name}`);
+          } catch (error) {
+            context.error(`Failed to update repo ${repo.full_name}:`, error);
+          }
+        })
+      );
+    }
     
-    context.log(`Processed ${githubRepos.length} repositories. Added ${newRepos.length} new repos.`);
+    context.log(`Processed ${githubRepos.length} repositories. Added ${newRepos.length} new repos, Updated ${updateRepos.length} existing repos.`);
     
   } catch (error) {
     context.error("Failed to process repositories:", error);
