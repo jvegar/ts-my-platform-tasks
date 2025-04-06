@@ -125,7 +125,7 @@ async function fetchRepoTopics(fullName: string, context: InvocationContext): Pr
 // Function to fetch public repositories for a given GitHub username
 async function fetchPublicRepos(username: string, context: InvocationContext): Promise<GitHubRepo[]> {
   try {
-    const url = `https://api.github.com/users/${username}/repos`;
+    const url = `https://api.github.com/users/${username}/repos?per_page=100`;
     const data = await makeGitHubRequest(url, context, { type: "public" });
 
     // Process repositories in batches to avoid overwhelming the API
