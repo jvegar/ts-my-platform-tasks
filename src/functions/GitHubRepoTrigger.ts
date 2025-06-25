@@ -242,6 +242,22 @@ export async function GitHubRepoTrigger(
         })
       );
     }
+
+    // Remove repos that no longer exist on GitHub
+    const existingFullNames = new Set(existingRepoMap.keys());
+    const githubFullNames = new Set(githubRepos.map(repo => repo.full_name));
+    const reposToRemove = Array.from(existingFullNames).filter(fullName => !githubFullNames.has(fullName));
+    for (const fullName of reposToRemove) {
+      const existingRepo = existingRepoMap.get(fullName);
+      if (existingRepo) {
+        try {
+          await axios.delete(`${API_BASE_URL}/api/github-repos/${existingRepo.id}`);
+          context.log(`Removed repo: ${fullName}`);
+        } catch (error) {
+          context.error(`Failed to remove repo ${fullName}:`, error);
+        }
+      }
+    }
     
     context.log(`Processed ${githubRepos.length} repositories. Added ${newRepos.length} new repos, Updated ${updateRepos.length} existing repos.`);
     

@@ -61,8 +61,3 @@ func azure functionapp publish <function-app-name>
 
 ## License
 MIT
-npm start
-For development with auto-rebuild:
-bash
-CopyInsert in Terminal
-npm run watch
